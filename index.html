@@ -1,0 +1,2012 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Drone Path Optimization — MDP + Multi-Algorithm Visualizer</title>
+
+    <style>
+      /* ===========================================
+ PREMIUM MODERN UI (Glassmorphism + Shadows)
+ =========================================== */
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: "Inter", "Segoe UI", sans-serif;
+        background: radial-gradient(
+          circle at top left,
+          #363a55 0,
+          #1e1e26 45%,
+          #111217 100%
+        );
+        color: #fff;
+        display: flex;
+        height: 100vh;
+        width: 100vw;
+        overflow: hidden;
+      }
+
+      /* Layout: left controls, center grid, right analytics */
+      /* NEW */
+      #appShell {
+        display: grid;
+        grid-template-columns: 320px minmax(0, 1fr) 320px;
+        grid-template-rows: 1fr;
+        height: 100%;
+        width: 100%;
+      }
+
+      /* --- Left sidebar controls --- */
+      #controlPanel {
+        backdrop-filter: blur(18px);
+        background: linear-gradient(
+          160deg,
+          rgba(255, 255, 255, 0.08),
+          rgba(0, 0, 0, 0.6)
+        );
+        border-right: 1px solid rgba(255, 255, 255, 0.08);
+        padding: 20px 22px;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        box-shadow: 8px 0 18px rgba(0, 0, 0, 0.45);
+        z-index: 2;
+      }
+
+      .panelTitle {
+        font-size: 18px;
+        font-weight: 600;
+        margin-bottom: 6px;
+      }
+
+      .panelSubtitle {
+        /* NEW */
+        font-size: 12px;
+        opacity: 0.7;
+        margin-top: -4px;
+        margin-bottom: 8px;
+      }
+
+      /* Dropdowns & buttons */
+      select,
+      button,
+      input[type="range"] {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.788);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: #000;
+        font-size: 13px;
+        cursor: pointer;
+        outline: none;
+        transition:
+          background 0.25s,
+          transform 0.15s,
+          box-shadow 0.2s;
+        backdrop-filter: blur(10px);
+      }
+
+      select:hover,
+      button:hover {
+        background: rgba(255, 255, 255, 0.22);
+        transform: translateY(-1px);
+        box-shadow: 0 10px 18px rgba(0, 0, 0, 0.35);
+      }
+
+      button:active {
+        transform: translateY(0);
+        box-shadow: none;
+      }
+
+      /* Buttons inline row */
+      /* NEW */
+      .btnRow {
+        display: flex;
+        gap: 10px;
+      }
+      .btnRow button {
+        flex: 1;
+      }
+
+      /* Range slider styling */
+      /* NEW */
+      input[type="range"] {
+        padding: 0;
+        height: 6px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.18);
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: #ffb74d;
+        box-shadow: 0 0 0 4px rgba(255, 183, 77, 0.35);
+        cursor: pointer;
+      }
+
+      /* --- Main grid section --- */
+      #gridContainer {
+        position: relative;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+
+      #grid {
+        display: grid;
+        grid-template-columns: repeat(20, 30px);
+        grid-template-rows: repeat(20, 30px);
+        gap: 3px;
+        padding: 20px;
+        border-radius: 20px;
+        background: radial-gradient(
+          circle at top,
+          rgba(255, 255, 255, 0.06),
+          rgba(0, 0, 0, 0.7)
+        );
+        backdrop-filter: blur(14px);
+        box-shadow:
+          0 0 25px rgba(0, 0, 0, 0.45),
+          0 28px 55px rgba(0, 0, 0, 0.7);
+      }
+
+      /* --- Grid cells --- */
+      .cell {
+        width: 30px;
+        height: 30px;
+        border-radius: 7px;
+        background: rgba(255, 255, 255, 0.1);
+        transition:
+          background 0.15s,
+          transform 0.15s,
+          box-shadow 0.15s;
+        position: relative;
+        overflow: hidden;
+      }
+      .cell:hover {
+        /* NEW */
+        transform: translateY(-2px) scale(1.02);
+        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+      }
+
+      /* cell small label/value */
+      .cellValue {
+        font-size: 9px;
+        position: absolute;
+        bottom: 2px;
+        right: 3px;
+        opacity: 0.65;
+      }
+
+      /* Special cell types */
+      .start {
+        background: #4caf50 !important;
+      }
+      .goal {
+        background: #2196f3 !important;
+      }
+      .obstacle {
+        background: #111 !important;
+      }
+      .nofly {
+        background: #ff1744 !important;
+      }
+
+      /* Search visualization */
+      .frontier {
+        background: #ffee58 !important;
+        transform: scale(1.05);
+      }
+      .visited {
+        background: #ffca28 !important;
+      }
+      .path {
+        background: #81c784 !important;
+        transform: scale(1.05);
+      }
+      .drone {
+        background: #ff9800 !important;
+        transform: scale(1.12);
+      }
+
+      /* Policy arrows */
+      .arrow {
+        position: absolute;
+        top: 5px;
+        left: 5px;
+        right: 5px;
+        bottom: 5px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        opacity: 0.9;
+      }
+
+      /* Legend */
+      #legend {
+        margin-top: auto;
+        background: rgba(0, 0, 0, 0.5);
+        padding: 12px 12px 10px;
+        border-radius: 14px;
+        font-size: 13px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .legendRow {
+        display: flex;
+        align-items: center;
+        margin-bottom: 4px;
+      }
+
+      .legendColor {
+        width: 18px;
+        height: 18px;
+        margin-right: 8px;
+        border-radius: 4px;
+      }
+
+      /* ===========================
+ RIGHT PANEL: ANALYTICS
+ =========================== */
+      /* NEW */
+      #analyticsPanel {
+        backdrop-filter: blur(18px);
+        background: linear-gradient(
+          200deg,
+          rgba(0, 0, 0, 0.7),
+          rgba(63, 81, 181, 0.18)
+        );
+        border-left: 1px solid rgba(255, 255, 255, 0.08);
+        padding: 18px 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        box-shadow: -8px 0 18px rgba(0, 0, 0, 0.45);
+        font-size: 13px;
+      }
+
+      #analyticsHeader {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+      }
+      #analyticsHeader .title {
+        font-size: 17px;
+        font-weight: 600;
+      }
+      #algoBadge {
+        font-size: 11px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.14);
+      }
+
+      /* Metric cards */
+      .metricsGrid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+      .metricCard {
+        background: rgba(0, 0, 0, 0.65);
+        border-radius: 12px;
+        padding: 8px 10px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      .metricLabel {
+        font-size: 11px;
+        opacity: 0.7;
+      }
+      .metricValue {
+        font-size: 15px;
+        font-weight: 600;
+        margin-top: 2px;
+      }
+
+      /* Status & log */
+      #runStatus {
+        margin-top: 4px;
+        font-size: 12px;
+        opacity: 0.85;
+      }
+      #log {
+        margin-top: 4px;
+        flex: 1;
+        background: rgba(0, 0, 0, 0.75);
+        border-radius: 12px;
+        padding: 8px 10px;
+        overflow: auto;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      .logEntry {
+        font-size: 11px;
+        margin-bottom: 4px;
+        opacity: 0.9;
+      }
+
+      /* Small helper text */
+      .helperText {
+        font-size: 11px;
+        opacity: 0.75;
+      }
+
+      /* Click mode pills */
+      /* NEW */
+      #editToolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 4px;
+      }
+      .modePill {
+        padding: 4px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        cursor: pointer;
+        background: rgba(0, 0, 0, 0.6);
+        border: 1px solid transparent;
+        user-select: none;
+      }
+      .modePill.active {
+        border-color: #ffb74d;
+        background: rgba(255, 183, 77, 0.25);
+      }
+
+      /* Disabled buttons */
+      button:disabled {
+        opacity: 0.45;
+        cursor: default;
+        box-shadow: none;
+        transform: none;
+      }
+
+      /* Small labels next to sliders / inputs */
+      /* NEW */
+      .inlineLabelRow {
+        display: flex;
+        justify-content: space-between;
+        font-size: 11px;
+        opacity: 0.78;
+        margin-top: 4px;
+      }
+
+      /* ===========================
+ INTRO MODAL STYLES
+ =========================== */
+
+      .intro-overlay {
+        position: fixed;
+        inset: 0;
+        background: radial-gradient(
+          circle at top,
+          rgba(10, 11, 20, 0.96),
+          rgba(0, 0, 0, 0.98)
+        );
+        backdrop-filter: blur(10px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+      }
+
+      .intro-modal {
+        width: min(820px, 92vw);
+        max-height: 84vh;
+        background: radial-gradient(
+            circle at top left,
+            rgba(99, 102, 241, 0.26),
+            transparent 55%
+          ),
+          linear-gradient(
+            145deg,
+            rgba(17, 24, 39, 0.98),
+            rgba(15, 23, 42, 0.98)
+          );
+        border-radius: 22px;
+        border: 1px solid rgba(148, 163, 184, 0.4);
+        box-shadow:
+          0 24px 70px rgba(0, 0, 0, 0.85),
+          0 0 0 1px rgba(15, 23, 42, 0.9);
+        padding: 18px 22px 14px;
+        display: flex;
+        flex-direction: column;
+        color: #e5e7eb;
+        animation: intro-pop 0.28s ease-out;
+      }
+
+      /* Header */
+      .intro-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 8px;
+      }
+
+      .intro-titleWrap {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .intro-icon {
+        width: 34px;
+        height: 34px;
+        border-radius: 999px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: radial-gradient(circle at 30% 0%, #fbbf24, #f97316);
+        box-shadow:
+          0 0 0 2px rgba(15, 23, 42, 1),
+          0 10px 22px rgba(0, 0, 0, 0.8);
+        font-size: 18px;
+      }
+
+      .intro-header h2 {
+        margin: 0;
+        font-size: 22px;
+        letter-spacing: 0.02em;
+      }
+
+      .intro-tagline {
+        margin: 2px 0 0;
+        font-size: 12px;
+        color: #9ca3af;
+      }
+
+      /* Close button */
+      .intro-close {
+        border: none;
+        background: transparent;
+        color: #9ca3af;
+        font-size: 22px;
+        cursor: pointer;
+        padding: 4px 8px;
+        border-radius: 999px;
+        line-height: 1;
+        transition:
+          background 0.2s,
+          transform 0.1s,
+          color 0.2s;
+      }
+      .intro-close:hover {
+        background: rgba(15, 23, 42, 0.9);
+        color: #e5e7eb;
+        transform: scale(1.05);
+      }
+
+      /* Body */
+      .intro-body {
+        font-size: 13px;
+        line-height: 1.5;
+        overflow-y: auto;
+        padding-right: 2px;
+        margin-top: 4px;
+      }
+
+      .intro-columns {
+        display: grid;
+        grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+        gap: 18px;
+        margin-bottom: 12px;
+      }
+
+      .intro-col h3 {
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #9ca3af;
+        margin: 0 0 6px;
+      }
+
+      .intro-col p {
+        margin: 4px 0 6px;
+      }
+
+      .intro-list {
+        padding-left: 16px;
+        margin: 4px 0 0;
+      }
+      .intro-list li {
+        margin-bottom: 4px;
+      }
+
+      /* Highlight block */
+      .intro-highlight {
+        margin-top: 6px;
+        padding: 10px 12px 8px;
+        border-radius: 14px;
+        background: radial-gradient(
+          circle at left,
+          rgba(59, 130, 246, 0.3),
+          rgba(15, 23, 42, 0.95)
+        );
+        border: 1px solid rgba(59, 130, 246, 0.5);
+        box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.9);
+      }
+
+      .intro-highlight h3 {
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #bfdbfe;
+        margin: 0 0 4px;
+      }
+
+      .intro-steps {
+        margin: 4px 0 0;
+        padding-left: 18px;
+        font-size: 12px;
+      }
+      .intro-steps li {
+        margin-bottom: 4px;
+      }
+
+      /* Footer */
+      .intro-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: 10px;
+        gap: 10px;
+      }
+
+      .intro-tip {
+        font-size: 11px;
+        color: #9ca3af;
+      }
+
+      /* Primary button */
+      .intro-primary {
+        border: none;
+        border-radius: 999px;
+        padding: 8px 18px;
+        font-size: 13px;
+        cursor: pointer;
+        color: #020617;
+        background: linear-gradient(135deg, #facc15, #f97316);
+        box-shadow:
+          0 16px 32px rgba(0, 0, 0, 0.9),
+          0 0 0 1px rgba(248, 250, 252, 0.06);
+        transition:
+          transform 0.15s,
+          box-shadow 0.15s,
+          filter 0.15s;
+      }
+      .intro-primary:hover {
+        transform: translateY(-1px);
+        box-shadow:
+          0 20px 40px rgba(0, 0, 0, 1),
+          0 0 0 1px rgba(248, 250, 252, 0.1);
+        filter: brightness(1.05);
+      }
+      .intro-primary:active {
+        transform: translateY(0);
+        box-shadow:
+          0 9px 20px rgba(0, 0, 0, 0.9),
+          0 0 0 1px rgba(248, 250, 252, 0.05);
+      }
+
+      /* Animation */
+      @keyframes intro-pop {
+        from {
+          opacity: 0;
+          transform: translateY(16px) scale(0.96);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+
+      /* Responsive tweak */
+      @media (max-width: 640px) {
+        .intro-columns {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .intro-modal {
+          padding: 14px 14px 10px;
+        }
+      }
+
+      #metricsChart {
+        width: 100%;
+        height: 140px;
+        background: radial-gradient(
+          circle at top,
+          rgba(15, 23, 42, 0.9),
+          rgba(15, 23, 42, 1)
+        );
+        border-radius: 14px;
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        box-shadow: 0 12px 28px rgba(0, 0, 0, 0.7);
+        padding: 6px;
+        box-sizing: border-box;
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- ===========================
+ ONBOARDING MODAL
+ =========================== -->
+    <div id="introOverlay" class="intro-overlay">
+      <div class="intro-modal">
+        <div class="intro-header">
+          <div class="intro-titleWrap">
+            <div class="intro-icon">🛰️</div>
+            <div>
+              <h2>Drone Path Optimization Lab</h2>
+              <p class="intro-tagline">
+                Compare MDP planning, search, and Q‑learning on a shared grid
+                world.
+              </p>
+            </div>
+          </div>
+          <button
+            id="introCloseBtn"
+            class="intro-close"
+            aria-label="Close intro"
+          >
+            &times;
+          </button>
+        </div>
+
+        <div class="intro-body">
+          <div class="intro-columns">
+            <div class="intro-col">
+              <h3>What this is</h3>
+              <p>
+                This sandbox simulates a drone flying over a 20×20 grid. The
+                drone starts at the green cell and must reach the blue goal
+                while avoiding obstacles and costly no‑fly zones.
+              </p>
+              <p>
+                You can run different decision‑making algorithms and watch how
+                their search patterns, policies, and paths differ on the same
+                environment.
+              </p>
+            </div>
+
+            <div class="intro-col">
+              <h3>Algorithms you can explore</h3>
+              <ul class="intro-list">
+                <li>
+                  <strong>Value / Policy Iteration:</strong> MDP planning with a
+                  known transition model.
+                </li>
+                <li>
+                  <strong>Dijkstra, A*, Greedy, BFS:</strong> Classic graph
+                  search and heuristic search.
+                </li>
+                <li>
+                  <strong>Q‑Learning:</strong> Model‑free RL that learns purely
+                  from experience.
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="intro-highlight">
+            <h3>How to use the interface</h3>
+            <ol class="intro-steps">
+              <li>
+                Use the left panel to choose an algorithm, edit the map, and set
+                animation speed.
+              </li>
+              <li>
+                Click <strong>Run Algorithm</strong> to visualize search,
+                policy, and the drone’s path.
+              </li>
+              <li>
+                Read the right‑hand metrics (steps, cost, nodes expanded,
+                runtime, reward) to compare methods.
+              </li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="intro-footer">
+          <label class="intro-tip">
+            Tip: Start with A* vs BFS on the same map to see the impact of using
+            a heuristic.
+          </label>
+          <button id="introGotIt" class="intro-primary">
+            Got it — start exploring
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div id="appShell">
+      <!-- ===========================
+ LEFT CONTROL PANEL
+ =========================== -->
+      <div id="controlPanel">
+        <div>
+          <div class="panelTitle">Algorithm</div>
+          <div class="panelSubtitle">
+            MDP, graph search & Q-learning in one playground
+          </div>
+          <select id="algoSelect">
+            <option value="valueIteration">MDP – Value Iteration</option>
+            <option value="policyIteration">MDP – Policy Iteration</option>
+            <option value="dijkstra">Dijkstra</option>
+            <option value="astar">A*</option>
+            <option value="greedy">Greedy Best-First</option>
+            <option value="bfs">Breadth-First Search</option>
+            <option value="qlearnInstant">Q-Learning – Instant</option>
+            <option value="qlearnAnimated">Q-Learning – Animated</option>
+          </select>
+        </div>
+
+        <div>
+          <div class="panelTitle">MDP Transition Model</div>
+          <div class="panelSubtitle">
+            Controls stochasticity in value / policy iteration
+          </div>
+          <select id="transitionMode">
+            <option value="deterministic">Deterministic</option>
+            <option value="stochastic">Stochastic (0.8 / 0.1 / 0.1)</option>
+          </select>
+        </div>
+
+        <!-- NEW: Animation speed -->
+        <div>
+          <div class="panelTitle">Animation Speed</div>
+          <div class="panelSubtitle">Tune search & drone playback speed</div>
+          <input
+            id="speedSlider"
+            type="range"
+            min="0.25"
+            max="3"
+            step="0.25"
+            value="1"
+          />
+          <div class="inlineLabelRow">
+            <span>Slow</span><span id="speedLabel">1.0x</span><span>Fast</span>
+          </div>
+        </div>
+
+        <!-- NEW: Edit modes -->
+        <div>
+          <div class="panelTitle">Edit Map</div>
+          <div class="panelSubtitle">Click a cell to update it</div>
+          <div id="editToolbar">
+            <div class="modePill active" data-mode="none">View only</div>
+            <div class="modePill" data-mode="start">Set Start</div>
+            <div class="modePill" data-mode="goal">Set Goal</div>
+            <div class="modePill" data-mode="obstacle">Toggle Obstacle</div>
+            <div class="modePill" data-mode="nofly">Toggle No-Fly</div>
+            <div class="modePill" data-mode="clear">Clear Cell</div>
+          </div>
+        </div>
+
+        <!-- NEW: Seed to get reproducible grids -->
+        <div>
+          <div class="panelTitle">Random Seed</div>
+          <div class="panelSubtitle">Use same seed for comparable runs</div>
+          <input
+            id="seedInput"
+            placeholder="auto"
+            style="
+              width: 100%;
+              padding: 8px 10px;
+              border-radius: 10px;
+              border: 1px solid rgba(255, 255, 255, 0.12);
+              background: rgba(0, 0, 0, 0.5);
+              color: #fff;
+              font-size: 12px;
+            "
+          />
+        </div>
+
+        <div class="btnRow">
+          <button id="runBtn">Run Algorithm</button>
+          <button id="resetBtn">Reset Map</button>
+        </div>
+
+        <!-- LEGEND -->
+        <div id="legend">
+          <div class="panelTitle" style="font-size: 15px; margin-bottom: 6px">
+            Legend
+          </div>
+          <div class="legendRow">
+            <div class="legendColor" style="background: #4caf50"></div>
+            Start
+          </div>
+          <div class="legendRow">
+            <div class="legendColor" style="background: #2196f3"></div>
+            Goal
+          </div>
+          <div class="legendRow">
+            <div class="legendColor" style="background: #111"></div>
+            Obstacle
+          </div>
+          <div class="legendRow">
+            <div class="legendColor" style="background: #ff1744"></div>
+            No-Fly Zone
+          </div>
+          <div class="legendRow">
+            <div class="legendColor" style="background: #ffee58"></div>
+            Frontier
+          </div>
+          <div class="legendRow">
+            <div class="legendColor" style="background: #ffca28"></div>
+            Visited Node
+          </div>
+          <div class="legendRow">
+            <div class="legendColor" style="background: #81c784"></div>
+            Path
+          </div>
+          <div class="legendRow">
+            <div class="legendColor" style="background: #ff9800"></div>
+            Drone
+          </div>
+        </div>
+
+        <div class="helperText">
+          Tip: Use the same seed and grid to compare algorithms on path cost,
+          nodes expanded, and runtime in the analytics panel.
+        </div>
+      </div>
+
+      <!-- ===========================
+ MAIN GRID AREA
+ =========================== -->
+      <div id="gridContainer">
+        <div id="grid"></div>
+      </div>
+
+      <!-- ===========================
+ RIGHT ANALYTICS PANEL
+ =========================== -->
+      <div id="analyticsPanel">
+        <div id="analyticsHeader">
+          <div class="title">Run Analytics</div>
+          <div id="algoBadge">Idle</div>
+        </div>
+        <div id="runStatus">
+          Ready. Configure the map and choose an algorithm.
+        </div>
+
+        <!-- Key metrics grid -->
+        <div class="metricsGrid">
+          <div class="metricCard">
+            <div class="metricLabel">Path length (steps)</div>
+            <div class="metricValue" id="mPathLen">–</div>
+          </div>
+          <div class="metricCard">
+            <div class="metricLabel">Path cost</div>
+            <div class="metricValue" id="mPathCost">–</div>
+          </div>
+          <div class="metricCard">
+            <div class="metricLabel">Nodes expanded</div>
+            <div class="metricValue" id="mNodesExp">–</div>
+          </div>
+          <div class="metricCard">
+            <div class="metricLabel">Runtime (ms)</div>
+            <div class="metricValue" id="mRuntime">–</div>
+          </div>
+          <div class="metricCard">
+            <div class="metricLabel">Avg reward per step</div>
+            <div class="metricValue" id="mAvgReward">–</div>
+          </div>
+          <div class="metricCard">
+            <div class="metricLabel">Iterations / episodes</div>
+            <div class="metricValue" id="mIters">–</div>
+          </div>
+        </div>
+
+        <div class="panelTitle" style="margin-top: 8px; font-size: 15px">
+          Run Chart
+        </div>
+        <canvas id="metricsChart" width="300" height="120"></canvas>
+
+        <div class="panelTitle" style="margin-top: 4px; font-size: 15px">
+          Event Log
+        </div>
+        <div id="log"></div>
+      </div>
+    </div>
+
+    <!-- ==================================
+ JAVASCRIPT SECTION
+ ================================== -->
+    <script>
+      /* ======================================================
+ GLOBAL CONFIG & CONSTANTS
+ ====================================================== */
+
+      const GRID_SIZE = 20;
+      const STEP_REWARD = -1;
+      const GOAL_REWARD = 100;
+      const NOFLY_REWARD = -50;
+      const GAMMA = 0.92;
+
+      const EMPTY = 0,
+        OBSTACLE = 1,
+        NOFLY = 2;
+
+      // ===============================
+      // SIMPLE METRICS BAR CHART
+      // ===============================
+      const metricsChartCanvas = document.getElementById("metricsChart");
+      const metricsChartCtx = metricsChartCanvas?.getContext("2d");
+
+      function drawMetricsChart(values) {
+        if (!metricsChartCtx) return;
+
+        const ctx = metricsChartCtx;
+        const w = metricsChartCanvas.width;
+        const h = metricsChartCanvas.height;
+
+        // Clear
+        ctx.clearRect(0, 0, w, h);
+
+        // If no data yet, show hint text
+        if (!values) {
+          ctx.fillStyle = "#9ca3af";
+          ctx.font = "12px Inter, system-ui, sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText("Run an algorithm to see metrics here.", w / 2, h / 2);
+          return;
+        }
+
+        const labels = ["Steps", "Cost", "Nodes", "Time(ms)"];
+        const data = [
+          values.steps ?? 0,
+          values.cost ?? 0,
+          values.nodes ?? 0,
+          values.time ?? 0,
+        ];
+
+        // Avoid degenerate scale
+        const maxVal = Math.max(...data, 1);
+        const padding = { top: 18, bottom: 22, left: 28, right: 10 };
+        const chartW = w - padding.left - padding.right;
+        const chartH = h - padding.top - padding.bottom;
+
+        const barCount = data.length;
+        const barGap = 10;
+        const barWidth = (chartW - barGap * (barCount - 1)) / barCount;
+
+        // Axis
+        ctx.strokeStyle = "#4b5563";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(padding.left, padding.top);
+        ctx.lineTo(padding.left, padding.top + chartH);
+        ctx.lineTo(padding.left + chartW, padding.top + chartH);
+        ctx.stroke();
+
+        // Bars
+        const colors = ["#60a5fa", "#f97316", "#22c55e", "#e5e7eb"];
+        for (let i = 0; i < barCount; i++) {
+          const v = data[i];
+          const ratio = v / maxVal;
+          const barH = ratio * chartH;
+          const x = padding.left + i * (barWidth + barGap);
+          const y = padding.top + chartH - barH;
+
+          // bar
+          const grad = ctx.createLinearGradient(0, y, 0, y + barH);
+          grad.addColorStop(0, colors[i]);
+          grad.addColorStop(1, "rgba(15,23,42,0.9)");
+
+          ctx.fillStyle = grad;
+          ctx.fillRect(x, y, barWidth, barH);
+
+          // value label
+          ctx.fillStyle = "#e5e7eb";
+          ctx.font = "10px Inter, system-ui, sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText(String(v), x + barWidth / 2, y - 4);
+
+          // x label
+          ctx.fillStyle = "#9ca3af";
+          ctx.fillText(labels[i], x + barWidth / 2, padding.top + chartH + 12);
+        }
+      }
+
+      // ===============================
+      // SIMPLE METRICS BAR CHART END!!!!!----------------###############################################################
+      // ===============================
+
+      let grid = [];
+      let start = { x: 1, y: 1 };
+      let goal = { x: 18, y: 18 };
+
+      let cellElements = {}; // DOM cache for faster drawing
+
+      // NEW: seedable RNG so you can compare algorithms on identical worlds
+      let rngSeed = null;
+      function seededRandom() {
+        if (rngSeed == null) return Math.random();
+        // simple LCG
+        rngSeed = (1664525 * rngSeed + 1013904223) % 4294967296;
+        return rngSeed / 4294967296;
+      }
+      function randInt(n) {
+        return Math.floor(seededRandom() * n);
+      }
+
+      function setSeedFromInput() {
+        // NEW
+        const seedField = document.getElementById("seedInput");
+        const val = seedField.value.trim();
+        if (!val) {
+          rngSeed = null;
+          return;
+        }
+        // hash string to 32-bit
+        let h = 0;
+        for (let i = 0; i < val.length; i++) {
+          h = (h << 5) - h + val.charCodeAt(i);
+          h |= 0;
+        }
+        rngSeed = h >>> 0;
+      }
+
+      /* ======================================================
+ RANDOM WORLD GENERATION
+ ====================================================== */
+
+      function generateGrid() {
+        grid = Array(GRID_SIZE)
+          .fill()
+          .map(() => Array(GRID_SIZE).fill(EMPTY));
+
+        // Random obstacles
+        for (let i = 0; i < 60; i++) {
+          let x = randInt(GRID_SIZE),
+            y = randInt(GRID_SIZE);
+          if (isStartGoal(x, y)) continue;
+          grid[y][x] = OBSTACLE;
+        }
+
+        // Random no-fly zones
+        for (let i = 0; i < 30; i++) {
+          let x = randInt(GRID_SIZE),
+            y = randInt(GRID_SIZE);
+          if (isStartGoal(x, y) || grid[y][x] !== EMPTY) continue;
+          grid[y][x] = NOFLY;
+        }
+      }
+
+      /* ======================================================
+ UTILS & HELPERS
+ ====================================================== */
+
+      function id(x, y) {
+        return `c-${x}-${y}`;
+      }
+      function inBounds(x, y) {
+        return x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE;
+      }
+      function isStartGoal(x, y) {
+        return (
+          (x === start.x && y === start.y) || (x === goal.x && y === goal.y)
+        );
+      }
+
+      const ACTIONS = [
+        { name: "up", dx: 0, dy: -1, arrow: "↑" },
+        { name: "down", dx: 0, dy: 1, arrow: "↓" },
+        { name: "left", dx: -1, dy: 0, arrow: "←" },
+        { name: "right", dx: 1, dy: 0, arrow: "→" },
+      ];
+
+      /* ======================================================
+ STATE TRANSITIONS
+ ====================================================== */
+
+      function getTransitionModel() {
+        const mode = document.getElementById("transitionMode").value;
+        return mode;
+      }
+
+      function transitions(x, y, action) {
+        const mode = getTransitionModel();
+        if (mode === "deterministic")
+          return deterministicTransition(x, y, action);
+        return stochasticTransition(x, y, action);
+      }
+
+      function deterministicTransition(x, y, a) {
+        let nx = x + a.dx;
+        let ny = y + a.dy;
+        if (!inBounds(nx, ny) || grid[ny][nx] === OBSTACLE)
+          return [{ x, y, prob: 1 }];
+        return [{ x: nx, y: ny, prob: 1 }];
+      }
+
+      function stochasticTransition(x, y, a) {
+        const leftTurn =
+          a.name === "up"
+            ? ACTIONS[2]
+            : a.name === "down"
+              ? ACTIONS[3]
+              : a.name === "left"
+                ? ACTIONS[1]
+                : ACTIONS[0];
+
+        const rightTurn =
+          a.name === "up"
+            ? ACTIONS[3]
+            : a.name === "down"
+              ? ACTIONS[2]
+              : a.name === "left"
+                ? ACTIONS[0]
+                : ACTIONS[1];
+
+        const options = [
+          { dir: a, p: 0.8 },
+          { dir: leftTurn, p: 0.1 },
+          { dir: rightTurn, p: 0.1 },
+        ];
+
+        let outs = [];
+        for (let opt of options) {
+          let nx = x + opt.dir.dx;
+          let ny = y + opt.dir.dy;
+          if (!inBounds(nx, ny) || grid[ny][nx] === OBSTACLE)
+            outs.push({ x, y, prob: opt.p });
+          else outs.push({ x: nx, y: ny, prob: opt.p });
+        }
+        return outs;
+      }
+
+      /* ======================================================
+ REWARD FUNCTION
+ ====================================================== */
+
+      function reward(x, y) {
+        if (x === goal.x && y === goal.y) return GOAL_REWARD;
+        if (grid[y][x] === NOFLY) return NOFLY_REWARD;
+        return STEP_REWARD;
+      }
+
+      /* ======================================================
+ MDP — VALUE ITERATION
+ ====================================================== */
+
+      async function valueIteration() {
+        let V = Array(GRID_SIZE)
+          .fill()
+          .map(() => Array(GRID_SIZE).fill(0));
+        let policy = Array(GRID_SIZE)
+          .fill()
+          .map(() => Array(GRID_SIZE).fill(null));
+
+        let lastDelta = 0;
+        let iterations = 0;
+
+        for (let iter = 0; iter < 40; iter++) {
+          iterations = iter + 1;
+          let newV = structuredClone(V);
+          let delta = 0;
+
+          for (let y = 0; y < GRID_SIZE; y++) {
+            for (let x = 0; x < GRID_SIZE; x++) {
+              if (grid[y][x] === OBSTACLE) continue;
+
+              if (x === goal.x && y === goal.y) {
+                newV[y][x] = GOAL_REWARD;
+                continue;
+              }
+
+              let best = -Infinity;
+              let bestA = null;
+
+              for (let a of ACTIONS) {
+                let sum = 0;
+                for (let tr of transitions(x, y, a))
+                  sum += tr.prob * (reward(tr.x, tr.y) + GAMMA * V[tr.y][tr.x]);
+                if (sum > best) {
+                  best = sum;
+                  bestA = a;
+                }
+              }
+
+              newV[y][x] = best;
+              policy[y][x] = bestA;
+              delta = Math.max(delta, Math.abs(best - V[y][x]));
+            }
+          }
+
+          V = newV;
+          lastDelta = delta;
+          await updateValueVisualization(V, policy);
+
+          if (delta < 0.01) break;
+        }
+
+        return { V, policy, iterations, lastDelta };
+      }
+
+      /* ======================================================
+ MDP — POLICY ITERATION
+ ====================================================== */
+
+      async function policyIteration() {
+        let V = Array(GRID_SIZE)
+          .fill()
+          .map(() => Array(GRID_SIZE).fill(0));
+        let policy = Array(GRID_SIZE)
+          .fill()
+          .map(() => Array(GRID_SIZE).fill(ACTIONS[randInt(4)]));
+
+        let iterations = 0;
+
+        for (let iter = 0; iter < 20; iter++) {
+          iterations = iter + 1;
+
+          // Policy Evaluation
+          for (let k = 0; k < 30; k++) {
+            let newV = structuredClone(V);
+
+            for (let y = 0; y < GRID_SIZE; y++) {
+              for (let x = 0; x < GRID_SIZE; x++) {
+                if (grid[y][x] === OBSTACLE) continue;
+
+                if (x === goal.x && y === goal.y) {
+                  newV[y][x] = GOAL_REWARD;
+                  continue;
+                }
+
+                let a = policy[y][x];
+                let sum = 0;
+                for (let tr of transitions(x, y, a))
+                  sum += tr.prob * (reward(tr.x, tr.y) + GAMMA * V[tr.y][tr.x]);
+
+                newV[y][x] = sum;
+              }
+            }
+            V = newV;
+          }
+
+          // Policy Improvement
+          let stable = true;
+
+          for (let y = 0; y < GRID_SIZE; y++) {
+            for (let x = 0; x < GRID_SIZE; x++) {
+              if (grid[y][x] === OBSTACLE) continue;
+
+              let oldA = policy[y][x];
+              let bestA = oldA;
+              let bestQ = -Infinity;
+
+              for (let a of ACTIONS) {
+                let sum = 0;
+                for (let tr of transitions(x, y, a))
+                  sum += tr.prob * (reward(tr.x, tr.y) + GAMMA * V[tr.y][tr.x]);
+                if (sum > bestQ) {
+                  bestQ = sum;
+                  bestA = a;
+                }
+              }
+
+              policy[y][x] = bestA;
+              if (bestA !== oldA) stable = false;
+            }
+          }
+
+          await updateValueVisualization(V, policy);
+
+          if (stable) break;
+        }
+
+        return { V, policy, iterations };
+      }
+
+      /* ======================================================
+ GRAPH ALGORITHMS
+ ====================================================== */
+
+      function neighbors(x, y) {
+        return ACTIONS.map((a) => ({
+          x: x + a.dx,
+          y: y + a.dy,
+          cost: grid[y + a.dy]?.[x + a.dx] === NOFLY ? 30 : 1,
+          valid:
+            inBounds(x + a.dx, y + a.dy) &&
+            grid[y + a.dy][x + a.dx] !== OBSTACLE,
+        })).filter((n) => n.valid);
+      }
+
+      // NEW: global counter for nodes expanded (search algorithms)
+      let nodesExpanded = 0;
+
+      async function dijkstra() {
+        nodesExpanded = 0;
+        let dist = Array(GRID_SIZE)
+          .fill()
+          .map(() => Array(GRID_SIZE).fill(Infinity));
+        let parent = {};
+        let pq = [{ x: start.x, y: start.y, d: 0 }];
+
+        dist[start.y][start.x] = 0;
+
+        while (pq.length > 0) {
+          pq.sort((a, b) => a.d - b.d);
+          let cur = pq.shift();
+
+          nodesExpanded++;
+          await markFrontier(cur.x, cur.y);
+
+          if (cur.x === goal.x && cur.y === goal.y) break;
+
+          for (let nb of neighbors(cur.x, cur.y)) {
+            let nd = cur.d + nb.cost;
+            if (nd < dist[nb.y][nb.x]) {
+              dist[nb.y][nb.x] = nd;
+              parent[`${nb.x},${nb.y}`] = `${cur.x},${cur.y}`;
+              pq.push({ x: nb.x, y: nb.y, d: nd });
+            }
+          }
+        }
+
+        return reconstructPath(parent);
+      }
+
+      async function astar() {
+        nodesExpanded = 0;
+        let dist = Array(GRID_SIZE)
+          .fill()
+          .map(() => Array(GRID_SIZE).fill(Infinity));
+        let parent = {};
+        let pq = [{ x: start.x, y: start.y, f: 0, g: 0 }];
+
+        dist[start.y][start.x] = 0;
+
+        function h(x, y) {
+          return Math.abs(x - goal.x) + Math.abs(y - goal.y);
+        }
+
+        while (pq.length > 0) {
+          pq.sort((a, b) => a.f - b.f);
+          let cur = pq.shift();
+
+          nodesExpanded++;
+          await markFrontier(cur.x, cur.y);
+
+          if (cur.x === goal.x && cur.y === goal.y) break;
+
+          for (let nb of neighbors(cur.x, cur.y)) {
+            let g2 = cur.g + nb.cost;
+            if (g2 < dist[nb.y][nb.x]) {
+              dist[nb.y][nb.x] = g2;
+              let f = g2 + h(nb.x, nb.y);
+              parent[`${nb.x},${nb.y}`] = `${cur.x},${cur.y}`;
+              pq.push({ x: nb.x, y: nb.y, g: g2, f: f });
+            }
+          }
+        }
+
+        return reconstructPath(parent);
+      }
+
+      async function greedy() {
+        nodesExpanded = 0;
+        function h(x, y) {
+          return Math.abs(x - goal.x) + Math.abs(y - goal.y);
+        }
+
+        let visited = {};
+        let pq = [{ x: start.x, y: start.y, h: h(start.x, start.y) }];
+        let parent = {};
+
+        while (pq.length > 0) {
+          pq.sort((a, b) => a.h - b.h);
+          let cur = pq.shift();
+
+          if (visited[`${cur.x},${cur.y}`]) continue;
+          visited[`${cur.x},${cur.y}`] = true;
+
+          nodesExpanded++;
+          await markFrontier(cur.x, cur.y);
+
+          if (cur.x === goal.x && cur.y === goal.y) break;
+
+          for (let nb of neighbors(cur.x, cur.y)) {
+            if (!visited[`${nb.x},${nb.y}`]) {
+              parent[`${nb.x},${nb.y}`] = `${cur.x},${cur.y}`;
+              pq.push({ x: nb.x, y: nb.y, h: h(nb.x, nb.y) });
+            }
+          }
+        }
+
+        return reconstructPath(parent);
+      }
+
+      async function bfs() {
+        nodesExpanded = 0;
+        let queue = [{ x: start.x, y: start.y }];
+        let parent = {};
+        let visited = Array(GRID_SIZE)
+          .fill()
+          .map(() => Array(GRID_SIZE).fill(false));
+        visited[start.y][start.x] = true;
+
+        while (queue.length > 0) {
+          let cur = queue.shift();
+
+          nodesExpanded++;
+          await markFrontier(cur.x, cur.y);
+
+          if (cur.x === goal.x && cur.y === goal.y) break;
+
+          for (let nb of neighbors(cur.x, cur.y)) {
+            if (!visited[nb.y][nb.x]) {
+              visited[nb.y][nb.x] = true;
+              parent[`${nb.x},${nb.y}`] = `${cur.x},${cur.y}`;
+              queue.push({ x: nb.x, y: nb.y });
+            }
+          }
+        }
+
+        return reconstructPath(parent);
+      }
+
+      /* ======================================================
+ Q-LEARNING (Instant + Animated)
+ ====================================================== */
+
+      function initQ() {
+        let Q = {};
+        for (let y = 0; y < GRID_SIZE; y++) {
+          for (let x = 0; x < GRID_SIZE; x++) {
+            if (grid[y][x] === OBSTACLE) continue;
+            Q[`${x},${y}`] = { up: 0, down: 0, left: 0, right: 0 };
+          }
+        }
+        return Q;
+      }
+
+      async function qlearnInstant() {
+        let Q = initQ();
+        const episodes = 3000;
+        const alpha = 0.1,
+          epsilon = 0.1;
+
+        for (let ep = 0; ep < episodes; ep++) {
+          let cx = start.x,
+            cy = start.y;
+
+          for (let step = 0; step < 200; step++) {
+            let key = `${cx},${cy}`;
+            let action = chooseActionEpsGreedy(Q[key], epsilon);
+
+            let a = ACTIONS.find((x) => x.name === action);
+            let after = transitions(cx, cy, a);
+
+            let { x: nx, y: ny } = sampleTransition(after);
+            let r = reward(nx, ny);
+
+            let nextKey = `${nx},${ny}`;
+            let maxNext = Math.max(...Object.values(Q[nextKey] || { up: 0 }));
+
+            Q[key][action] += alpha * (r + GAMMA * maxNext - Q[key][action]);
+
+            cx = nx;
+            cy = ny;
+            if (cx === goal.x && cy === goal.y) break;
+          }
+        }
+
+        return { ...extractQLearningPolicy(Q), episodes };
+      }
+
+      async function qlearnAnimated() {
+        let Q = initQ();
+        const episodes = 1000;
+        const alpha = 0.1,
+          epsilon = 0.2;
+
+        for (let ep = 0; ep < episodes; ep++) {
+          let cx = start.x,
+            cy = start.y;
+
+          for (let step = 0; step < 200; step++) {
+            await markFrontier(cx, cy);
+
+            let key = `${cx},${cy}`;
+            let action = chooseActionEpsGreedy(Q[key], epsilon);
+            let a = ACTIONS.find((x) => x.name === action);
+
+            let after = transitions(cx, cy, a);
+            let { x: nx, y: ny } = sampleTransition(after);
+            let r = reward(nx, ny);
+
+            let nextKey = `${nx},${ny}`;
+            let maxNext = Math.max(...Object.values(Q[nextKey] || { up: 0 }));
+
+            Q[key][action] += alpha * (r + GAMMA * maxNext - Q[key][action]);
+
+            cx = nx;
+            cy = ny;
+            if (cx === goal.x && cy === goal.y) break;
+          }
+        }
+
+        return { ...extractQLearningPolicy(Q), episodes };
+      }
+
+      function chooseActionEpsGreedy(Qs, eps) {
+        if (Math.random() < eps) {
+          let names = Object.keys(Qs);
+          return names[Math.floor(Math.random() * names.length)];
+        }
+        return Object.entries(Qs).sort((a, b) => b[1] - a[1])[0][0];
+      }
+
+      function sampleTransition(arr) {
+        let r = Math.random(),
+          s = 0;
+        for (let t of arr) {
+          s += t.prob;
+          if (r < s) return { x: t.x, y: t.y };
+        }
+        return { x: arr[0].x, y: arr[0].y };
+      }
+
+      function extractQLearningPolicy(Q) {
+        let policy = Array(GRID_SIZE)
+          .fill()
+          .map(() => Array(GRID_SIZE).fill(null));
+
+        for (let y = 0; y < GRID_SIZE; y++) {
+          for (let x = 0; x < GRID_SIZE; x++) {
+            if (grid[y][x] === OBSTACLE) continue;
+
+            let key = `${x},${y}`;
+            let best = Object.entries(Q[key] || {}).sort(
+              (a, b) => b[1] - a[1]
+            )[0];
+            if (best) {
+              let a = ACTIONS.find((v) => v.name === best[0]);
+              policy[y][x] = a;
+            }
+          }
+        }
+
+        return { policy };
+      }
+
+      /* ======================================================
+ PATH RECONSTRUCTION & COST
+ ====================================================== */
+
+      function reconstructPath(parent) {
+        let path = [];
+        let key = `${goal.x},${goal.y}`;
+
+        while (parent[key]) {
+          let [x, y] = key.split(",").map(Number);
+          path.push({ x, y });
+          key = parent[key];
+        }
+
+        path.reverse();
+        return path;
+      }
+
+      // NEW: compute path cost and total reward
+      function computePathCostAndReward(path) {
+        if (!path || path.length === 0)
+          return { cost: null, totalReward: null };
+        let cost = 0;
+        let totalReward = 0;
+        let prev = { x: start.x, y: start.y };
+        for (let step of path) {
+          const cell = grid[step.y][step.x];
+          cost += cell === NOFLY ? 30 : 1;
+          totalReward += reward(step.x, step.y);
+          prev = step;
+        }
+        return { cost, totalReward };
+      }
+
+      /* ======================================================
+ VISUALIZATION + ANALYTICS + UI WIRING
+ ====================================================== */
+
+      const gridDiv = document.getElementById("grid");
+      const runBtn = document.getElementById("runBtn");
+      const resetBtn = document.getElementById("resetBtn");
+      const algoSel = document.getElementById("algoSelect");
+      const speedSlider = document.getElementById("speedSlider");
+      const speedLabel = document.getElementById("speedLabel");
+
+      // Analytics elements
+      const mPathLen = document.getElementById("mPathLen");
+      const mPathCost = document.getElementById("mPathCost");
+      const mNodesExp = document.getElementById("mNodesExp");
+      const mRuntime = document.getElementById("mRuntime");
+      const mAvgReward = document.getElementById("mAvgReward");
+      const mIters = document.getElementById("mIters");
+      const runStatus = document.getElementById("runStatus");
+      const algoBadge = document.getElementById("algoBadge");
+      const logDiv = document.getElementById("log");
+
+      /* ======================================================
+ BUILD DOM GRID
+ ====================================================== */
+
+      function buildGridDOM() {
+        gridDiv.innerHTML = "";
+        cellElements = {};
+
+        for (let y = 0; y < GRID_SIZE; y++) {
+          for (let x = 0; x < GRID_SIZE; x++) {
+            const c = document.createElement("div");
+            c.className = "cell";
+            const cid = id(x, y);
+            c.id = cid;
+
+            const val = document.createElement("div");
+            val.className = "cellValue";
+            c.appendChild(val);
+
+            // NEW: click editing
+            c.addEventListener("click", () => handleCellClick(x, y));
+
+            cellElements[cid] = c;
+            gridDiv.appendChild(c);
+          }
+        }
+      }
+
+      /* ======================================================
+ DRAW STATIC GRID CONTENT
+ ====================================================== */
+
+      function drawStaticGrid() {
+        for (let y = 0; y < GRID_SIZE; y++) {
+          for (let x = 0; x < GRID_SIZE; x++) {
+            const el = cellElements[id(x, y)];
+            // reset inline styles and classes (except cell base)
+            el.className = "cell";
+            el.style.background = "";
+
+            if (x === start.x && y === start.y) el.classList.add("start");
+            else if (x === goal.x && y === goal.y) el.classList.add("goal");
+            else if (grid[y][x] === OBSTACLE) el.classList.add("obstacle");
+            else if (grid[y][x] === NOFLY) el.classList.add("nofly");
+          }
+        }
+      }
+
+      /* ======================================================
+ MARK FRONTIER / VISITED FOR SEARCH
+ ====================================================== */
+
+      function sleep(ms) {
+        return new Promise((res) => setTimeout(res, ms));
+      }
+
+      // speed-scaled delay
+      function scaledDelay(baseMs) {
+        // NEW
+        const factor = parseFloat(speedSlider.value) || 1;
+        return baseMs / factor;
+      }
+
+      async function markFrontier(x, y) {
+        const el = cellElements[id(x, y)];
+        el.classList.add("frontier");
+        await sleep(scaledDelay(40));
+        el.classList.remove("frontier");
+        el.classList.add("visited");
+      }
+
+      /* ======================================================
+ DRAW PATH + DRONE ANIMATION
+ ====================================================== */
+
+      async function animatePath(path) {
+        if (!path) return;
+        for (let step of path) {
+          let el = cellElements[id(step.x, step.y)];
+          el.classList.add("drone");
+          await sleep(scaledDelay(60));
+          el.classList.remove("drone");
+          el.classList.add("path");
+        }
+      }
+
+      /* ======================================================
+ VALUE + POLICY VISUALIZATION (MDP)
+ ====================================================== */
+
+      async function updateValueVisualization(V, policy) {
+        for (let y = 0; y < GRID_SIZE; y++) {
+          for (let x = 0; x < GRID_SIZE; x++) {
+            const el = cellElements[id(x, y)];
+            const value = V[y]?.[x];
+            const span = el.querySelector(".cellValue");
+            if (span && value != null) span.innerText = value.toFixed(0);
+
+            // clear special classes except base type
+            if (grid[y][x] === EMPTY) {
+              const h = Math.min(Math.max((value + 10) / 120, 0), 1);
+              const r = Math.floor(255 * (1 - h));
+              const g = Math.floor(255 * h);
+              el.style.background = `rgba(${r},${g},80,0.25)`;
+            }
+
+            const oldArrow = el.querySelector(".arrow");
+            if (oldArrow) oldArrow.remove();
+
+            if (policy[y][x] && grid[y][x] === EMPTY) {
+              const arr = document.createElement("div");
+              arr.className = "arrow";
+              arr.innerText = policy[y][x].arrow;
+              el.appendChild(arr);
+            }
+          }
+        }
+        await sleep(scaledDelay(50));
+      }
+
+      /* ======================================================
+ FOLLOW POLICY (MDP/Q-Learning)
+ ====================================================== */
+
+      function followPolicy(policy) {
+        let path = [];
+        let x = start.x,
+          y = start.y;
+
+        for (let i = 0; i < 200; i++) {
+          let a = policy[y][x];
+          if (!a) break;
+          x += a.dx;
+          y += a.dy;
+          path.push({ x, y });
+          if (x === goal.x && y === goal.y) break;
+        }
+        return path;
+      }
+
+      /* ======================================================
+ ANALYTICS UPDATE HELPERS
+ ====================================================== */
+
+      function resetMetrics() {
+        mPathLen.textContent = "–";
+        mPathCost.textContent = "–";
+        mNodesExp.textContent = "–";
+        mRuntime.textContent = "–";
+        mAvgReward.textContent = "–";
+        mIters.textContent = "–";
+      }
+
+      function pushLog(msg) {
+        const e = document.createElement("div");
+        e.className = "logEntry";
+        const now = new Date();
+        const t = now.toLocaleTimeString();
+        e.textContent = `[${t}] ${msg}`;
+        logDiv.prepend(e);
+      }
+
+      function setStatus(text) {
+        runStatus.textContent = text;
+      }
+
+      /* ======================================================
+ RUNNING ALGORITHMS
+ ====================================================== */
+
+      runBtn.onclick = async () => {
+        disableButtons();
+        resetMetrics();
+        drawStaticGrid();
+        setStatus("Running...");
+        algoBadge.textContent = algoSel.options[algoSel.selectedIndex].text;
+        pushLog(`Started: ${algoBadge.textContent}`);
+
+        const algo = algoSel.value;
+        let result = null;
+        let iterationsOrEpisodes = null;
+
+        const t0 = performance.now();
+
+        if (algo === "valueIteration") {
+          const out = await valueIteration();
+          iterationsOrEpisodes = out.iterations;
+          result = followPolicy(out.policy);
+          await animatePath(result);
+        } else if (algo === "policyIteration") {
+          const out = await policyIteration();
+          iterationsOrEpisodes = out.iterations;
+          result = followPolicy(out.policy);
+          await animatePath(result);
+        } else if (algo === "dijkstra") {
+          result = await dijkstra();
+          iterationsOrEpisodes = null;
+          await animatePath(result);
+        } else if (algo === "astar") {
+          result = await astar();
+          iterationsOrEpisodes = null;
+          await animatePath(result);
+        } else if (algo === "greedy") {
+          result = await greedy();
+          iterationsOrEpisodes = null;
+          await animatePath(result);
+        } else if (algo === "bfs") {
+          result = await bfs();
+          iterationsOrEpisodes = null;
+          await animatePath(result);
+        } else if (algo === "qlearnInstant") {
+          const out = await qlearnInstant();
+          iterationsOrEpisodes = out.episodes;
+          result = followPolicy(out.policy);
+          await animatePath(result);
+        } else if (algo === "qlearnAnimated") {
+          const out = await qlearnAnimated();
+          iterationsOrEpisodes = out.episodes;
+          result = followPolicy(out.policy);
+          await animatePath(result);
+        }
+
+        const t1 = performance.now();
+        const runtimeMs = (t1 - t0).toFixed(1);
+
+        // Compute analytics from path
+        const { cost, totalReward } = computePathCostAndReward(result);
+        const length = result ? result.length : 0;
+        const avgReward =
+          length > 0 && totalReward != null
+            ? (totalReward / length).toFixed(2)
+            : "–";
+
+        mPathLen.textContent = length || "–";
+        mPathCost.textContent = cost != null ? cost : "–";
+        mNodesExp.textContent = ["dijkstra", "astar", "greedy", "bfs"].includes(
+          algo
+        )
+          ? nodesExpanded
+          : "–";
+        mRuntime.textContent = runtimeMs;
+        mAvgReward.textContent = avgReward;
+        mIters.textContent =
+          iterationsOrEpisodes != null ? iterationsOrEpisodes : "–";
+
+        // Update bar chart with this run's metrics
+        drawMetricsChart({
+          steps: length || 0,
+          cost: cost ?? 0,
+          nodes: ["dijkstra", "astar", "greedy", "bfs"].includes(algo)
+            ? nodesExpanded
+            : 0,
+          time: parseFloat(runtimeMs) || 0,
+        });
+
+        setStatus(
+          "Completed. Inspect metrics to compare algorithms on this map."
+        );
+        pushLog(`Finished: ${algoBadge.textContent} | 
+ STEPS=${length} COST=${cost ?? "N/A"} NODES=${nodesExpanded} TIME=${runtimeMs}ms`);
+
+        enableButtons();
+      };
+
+      /* ======================================================
+ RESET ENVIRONMENT
+ ====================================================== */
+
+      resetBtn.onclick = () => {
+        setSeedFromInput();
+        generateGrid();
+        drawStaticGrid();
+        resetMetrics();
+        algoBadge.textContent = "Idle";
+        setStatus("Map reset. Configure parameters and run an algorithm.");
+        pushLog("Environment reset.");
+      };
+
+      /* ======================================================
+ ENABLE/DISABLE UI
+ ====================================================== */
+
+      function disableButtons() {
+        runBtn.disabled = true;
+        resetBtn.disabled = true;
+      }
+      function enableButtons() {
+        runBtn.disabled = false;
+        resetBtn.disabled = false;
+      }
+
+      /* ======================================================
+ EDIT MODES (click to modify grid)
+ ====================================================== */
+
+      let currentEditMode = "none";
+
+      const modePills = document.querySelectorAll(".modePill");
+      modePills.forEach((p) => {
+        p.addEventListener("click", () => {
+          modePills.forEach((q) => q.classList.remove("active"));
+          p.classList.add("active");
+          currentEditMode = p.dataset.mode;
+        });
+      });
+
+      function handleCellClick(x, y) {
+        if (currentEditMode === "none") return;
+
+        if (currentEditMode === "start") {
+          start = { x, y };
+        } else if (currentEditMode === "goal") {
+          goal = { x, y };
+        } else if (currentEditMode === "obstacle") {
+          if (!isStartGoal(x, y))
+            grid[y][x] = grid[y][x] === OBSTACLE ? EMPTY : OBSTACLE;
+        } else if (currentEditMode === "nofly") {
+          if (!isStartGoal(x, y))
+            grid[y][x] = grid[y][x] === NOFLY ? EMPTY : NOFLY;
+        } else if (currentEditMode === "clear") {
+          if (!isStartGoal(x, y)) grid[y][x] = EMPTY;
+        }
+
+        drawStaticGrid();
+      }
+
+      /* ======================================================
+ SPEED SLIDER UI
+ ====================================================== */
+
+      speedSlider.addEventListener("input", () => {
+        speedLabel.textContent = speedSlider.value + "x";
+      });
+
+      /* ======================================================
+ INIT ON LOAD
+ ====================================================== */
+
+      setSeedFromInput();
+      generateGrid();
+      buildGridDOM();
+      drawStaticGrid();
+      setStatus("Ready. Configure the map and choose an algorithm.");
+      pushLog("Visualizer loaded.");
+      drawMetricsChart(null);
+
+      // ===============================
+      // INTRO MODAL LOGIC
+      // ===============================
+      const introOverlay = document.getElementById("introOverlay");
+      const introGotIt = document.getElementById("introGotIt");
+      const introClose = document.getElementById("introCloseBtn");
+
+      // close helper
+      function hideIntroModal() {
+        if (introOverlay) {
+          introOverlay.style.display = "none";
+        }
+      }
+
+      if (introOverlay) {
+        introGotIt?.addEventListener("click", hideIntroModal);
+        introClose?.addEventListener("click", hideIntroModal);
+        introOverlay.addEventListener("click", (e) => {
+          if (e.target === introOverlay) hideIntroModal();
+        });
+
+        // Always show on page load / refresh
+        introOverlay.style.display = "flex";
+      }
+    </script>
+  </body>
+</html>
