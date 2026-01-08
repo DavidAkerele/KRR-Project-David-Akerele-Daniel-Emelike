@@ -1,4 +1,4 @@
-<img width="1919" height="960" alt="image" src="https://github.com/user-attachments/assets/3b676ecb-36f3-42fb-bef7-b9852dce3b6b" />
+<img width="1919" height="760" alt="image" src="https://github.com/user-attachments/assets/3b676ecb-36f3-42fb-bef7-b9852dce3b6b" />
 
 # Drone Path Optimisation Lab
 
@@ -71,10 +71,8 @@ The simulation includes stochastic transitions where commanded actions succeed 8
 ```bash
 # Clone the repository
 git clone https://github.com/DavidAkerele/KRR-Project-David-Akerele-Daniel-Emelike.git
-git clone https://github.com/yourusername/drone-path-optimisation-lab.git
 
 # Navigate to project directory
-cd drone-path-optimisation-lab
 cd KRR-Project-David-Akerele-Daniel-Emelike
 
 # Open index.html in your browser
